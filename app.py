@@ -5,9 +5,9 @@ import cv2
 import matplotlib.pyplot as plt
 import os
 import base64
+import urllib.request
 from PIL import Image
 from tensorflow.keras.applications.resnet_v2 import preprocess_input
-import mediapipe as mp
 
 
 # 1. config halaman dan css
@@ -428,6 +428,18 @@ def load_my_model():
 
 model = load_my_model()
 
+@st.cache_resource
+def get_yunet_model():
+    model_file = "face_detection_yunet_2023mar.onnx"
+    if not os.path.exists(model_file):
+        url = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+        try:
+            urllib.request.urlretrieve(url, model_file)
+        except Exception as e:
+            print(f"Gagal mengunduh YuNet model: {e}")
+            return None
+    return model_file
+
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name="resnet50v2", sub_layer_name="post_relu", pred_index=None):
     base_model = model.get_layer(last_conv_layer_name)
     inner_grad_model = tf.keras.models.Model(inputs=[base_model.inputs], outputs=[base_model.get_layer(sub_layer_name).output])
@@ -455,63 +467,74 @@ def crop_face_keep_ratio(img_rgb):
         return None
 
     try:
-        # Pastikan array bersifat contiguous
-        img_rgb_clean = np.ascontiguousarray(img_rgb, dtype=np.uint8)
+        img_clean = np.ascontiguousarray(img_rgb, dtype=np.uint8)
+        h, w, _ = img_clean.shape
+        img_bgr = cv2.cvtColor(img_clean, cv2.COLOR_RGB2BGR)
 
-        mp_face_detection = mp.solutions.face_detection
+        # 1. METODE UTAMA: YuNet DNN Face Detector (Sangat Akurat, Tanpa Salah Crop Pohon)
+        yunet_onnx = get_yunet_model()
+        if yunet_onnx and os.path.exists(yunet_onnx) and hasattr(cv2, 'FaceDetectorYN'):
+            detector = cv2.FaceDetectorYN.create(
+                model=yunet_onnx,
+                config="",
+                input_size=(w, h),
+                score_threshold=0.5,
+                nms_threshold=0.3,
+                top_k=5000
+            )
+            _, faces = detector.detect(img_bgr)
 
-        # Deteksi Wajah MediaPipe dengan mode gambar statis
-        with mp_face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.1) as face_detection:
-            results = face_detection.process(img_rgb_clean)
+            if faces is not None and len(faces) > 0:
+                # Pilih wajah dengan skor confidence/luas terbesar
+                faces = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)
+                box = faces[0][:4].astype(int)
+                x, y, w_box, h_box = box
 
-            # Jika model_selection=0 belum ketemu, coba model_selection=1 (jarak jauh)
-            if not results or not results.detections:
-                with mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.1) as face_far:
-                    results = face_far.process(img_rgb_clean)
-
-            if results and results.detections:
-                detection = results.detections[0]
-                bboxC = detection.location_data.relative_bounding_box
-                h, w, _ = img_rgb.shape
-
-                # Ambil koordinat box
-                x = max(0, int(bboxC.xmin * w))
-                y = max(0, int(bboxC.ymin * h))
-                w_box = min(w - x, int(bboxC.width * w))
-                h_box = min(h - y, int(bboxC.height * h))
-
-                # Tambahkan margin aman di sekitar wajah
-                margin = int(0.2 * max(w_box, h_box))
-                y1 = max(0, y - margin)
-                y2 = min(h, y + h_box + margin)
-                x1 = max(0, x - margin)
-                x2 = min(w, x + w_box + margin)
-
-                return img_rgb[y1:y2, x1:x2]
+                # Pengecekan rasio aspek wajah manusia (lebar / tinggi)
+                aspect_ratio = float(w_box) / max(1, h_box)
+                if 0.5 <= aspect_ratio <= 1.5:
+                    margin = int(0.2 * max(w_box, h_box))
+                    y1 = max(0, y - margin)
+                    y2 = min(h, y + h_box + margin)
+                    x1 = max(0, x - margin)
+                    x2 = min(w, x + w_box + margin)
+                    return img_rgb[y1:y2, x1:x2]
 
     except Exception as e:
-        print(f"Error MediaPipe: {e}")
+        print(f"Error YuNet: {e}")
 
-    # Fallback OpenCV jika MediaPipe berhalangan di server
+    # 2. METODE FALLBACK: Haar Cascade dengan Parameter Ketat
     try:
         xml_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
         face_cascade = cv2.CascadeClassifier(xml_path)
         gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
-        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=2, minSize=(30, 30))
-        
+        gray_eq = cv2.equalizeHist(gray)
+
+        # minNeighbors=6 & minSize=(60, 60) mencegah dedaunan/pohon ter-crop
+        faces = face_cascade.detectMultiScale(
+            gray_eq, 
+            scaleFactor=1.1, 
+            minNeighbors=6, 
+            minSize=(60, 60)
+        )
+
         if len(faces) > 0:
             faces = sorted(faces, key=lambda b: b[2] * b[3], reverse=True)
-            x, y, w, h = faces[0]
-            margin = int(0.2 * max(w, h))
-            y1 = max(0, y - margin)
-            y2 = min(img_rgb.shape[0], y + h + margin)
-            x1 = max(0, x - margin)
-            x2 = min(img_rgb.shape[1], x + w + margin)
-            return img_rgb[y1:y2, x1:x2]
-    except Exception as e:
-        print(f"Error OpenCV Fallback: {e}")
+            x, y, w_box, h_box = faces[0]
 
-    # JIKA BUKAN WAJAH MANUSIA (Bola, Objek Mati, dll): RETURN NONE!
+            aspect_ratio = float(w_box) / max(1, h_box)
+            if 0.6 <= aspect_ratio <= 1.4:
+                margin = int(0.2 * max(w_box, h_box))
+                y1 = max(0, y - margin)
+                y2 = min(img_rgb.shape[0], y + h_box + margin)
+                x1 = max(0, x - margin)
+                x2 = min(img_rgb.shape[1], x + w_box + margin)
+                return img_rgb[y1:y2, x1:x2]
+
+    except Exception as e:
+        print(f"Error Haar Fallback: {e}")
+
+    # JIKA BUKAN WAJAH MANUSIA (Pohon, Bola, Barang): RETURN NONE!
     return None
 
 def get_hijab_recommendation(shape_label):
