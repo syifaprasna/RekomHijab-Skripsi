@@ -450,8 +450,6 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name="resnet50v2", su
     if heatmap_max == 0: heatmap_max = 1e-5
     return (heatmap / heatmap_max).numpy()
 
-import mediapipe as mp
-
 def crop_face_keep_ratio(img_rgb):
     if img_rgb is None:
         return None
