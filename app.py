@@ -455,9 +455,11 @@ def crop_face_keep_ratio(img_rgb):
         return None
 
     try:
+        img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+
         mp_face_detection = mp.solutions.face_detection
-        with mp_face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.4) as face_detection:
-            results = face_detection.process(img_rgb)
+        with mp_face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.3) as face_detection:
+            results = face_detection.process(img_bgr)
 
             if results.detections:
                 detection = results.detections[0]
@@ -468,6 +470,9 @@ def crop_face_keep_ratio(img_rgb):
                 y = int(bboxC.ymin * h)
                 w_box = int(bboxC.width * w)
                 h_box = int(bboxC.height * h)
+
+                x = max(0, x)
+                y = max(0, y)
 
                 margin = int(0.2 * max(w_box, h_box))
                 y1 = max(0, y - margin)
