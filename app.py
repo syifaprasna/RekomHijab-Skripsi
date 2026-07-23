@@ -567,7 +567,8 @@ else:
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.error("Wajah tidak terdeteksi!")
             else:
-                img_array = np.expand_dims(tf.keras.preprocessing.image.img_to_array(face_ready), axis=0)
+                img_resized = cv2.resize(face_ready, (299, 299))
+                img_array = np.expand_dims(tf.keras.preprocessing.image.img_to_array(img_resized), axis=0)
                 processed_img = preprocess_input(img_array)
                 
                 preds = model.predict(processed_img)
