@@ -7,6 +7,7 @@ import os
 import base64
 from PIL import Image
 from tensorflow.keras.applications.resnet_v2 import preprocess_input
+import mediapipe as mp
 
 
 # 1. config halaman dan css
@@ -449,44 +450,37 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name="resnet50v2", su
     if heatmap_max == 0: heatmap_max = 1e-5
     return (heatmap / heatmap_max).numpy()
 
+import mediapipe as mp
+
 def crop_face_keep_ratio(img_rgb):
     if img_rgb is None:
         return None
 
-    xml_filename = 'haarcascade_frontalface_default.xml'
-    
-    if not os.path.exists(xml_filename):
-        xml_filename = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-
     try:
-        face_cascade = cv2.CascadeClassifier(xml_filename)
+        mp_face_detection = mp.solutions.face_detection
+        with mp_face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.4) as face_detection:
+            results = face_detection.process(img_rgb)
 
-        if face_cascade.empty():
-            return None
+            if results.detections:
+                detection = results.detections[0]
+                bboxC = detection.location_data.relative_bounding_box
+                h, w, _ = img_rgb.shape
 
-        gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
-        
-        gray = cv2.equalizeHist(gray)
+                x = int(bboxC.xmin * w)
+                y = int(bboxC.ymin * h)
+                w_box = int(bboxC.width * w)
+                h_box = int(bboxC.height * h)
 
-        faces = face_cascade.detectMultiScale(
-            gray, 
-            scaleFactor=1.03, 
-            minNeighbors=3, 
-            minSize=(20, 20)
-        )
+                margin = int(0.2 * max(w_box, h_box))
+                y1 = max(0, y - margin)
+                y2 = min(h, y + h_box + margin)
+                x1 = max(0, x - margin)
+                x2 = min(w, x + w_box + margin)
 
-        if len(faces) > 0:
-            faces = sorted(faces, key=lambda b: b[2] * b[3], reverse=True)
-            x, y, w, h = faces[0]
-            
-            margin = int(0.2 * max(w, h))
-            y1 = max(0, y - margin)
-            y2 = min(img_rgb.shape[0], y + h + margin)
-            x1 = max(0, x - margin)
-            x2 = min(img_rgb.shape[1], x + w + margin)
-            return img_rgb[y1:y2, x1:x2]
+                return img_rgb[y1:y2, x1:x2]
 
     except Exception as e:
+        print(f"Error MediaPipe: {e}")
         return None
 
     return None
