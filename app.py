@@ -455,18 +455,19 @@ def crop_face_keep_ratio(img_rgb):
 
     try:
         xml_filename = 'haarcascade_frontalface_default.xml'
+        
         if os.path.exists(xml_filename):
             face_cascade = cv2.CascadeClassifier(xml_filename)
         else:
-            cascade_path = getattr(cv2, 'data', None)
-            if cascade_path is not None:
-                face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + xml_filename)
-            else:
-                return img_rgb 
+            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + xml_filename)
 
-        # Konversi ke grayscale untuk deteksi
         gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
-        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+        faces = face_cascade.detectMultiScale(
+            gray, 
+            scaleFactor=1.1, 
+            minNeighbors=5, 
+            minSize=(30, 30)
+        )
 
         if len(faces) > 0:
             x, y, w, h = faces[0]
@@ -476,11 +477,11 @@ def crop_face_keep_ratio(img_rgb):
             x1 = max(0, x - margin)
             x2 = min(img_rgb.shape[1], x + w + margin)
             return img_rgb[y1:y2, x1:x2]
-
+            
     except Exception as e:
-        return img_rgb
+        return None
 
-    return img_rgb
+    return None
 
 def get_hijab_recommendation(shape_label):
     recommendations = {
