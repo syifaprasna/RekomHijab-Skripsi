@@ -453,19 +453,25 @@ def crop_face_keep_ratio(img_rgb):
     if img_rgb is None:
         return None
 
-    try:
-        xml_filename = 'haarcascade_frontalface_default.xml'
-        
-        if os.path.exists(xml_filename):
-            face_cascade = cv2.CascadeClassifier(xml_filename)
-        else:
-            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + xml_filename)
+    xml_filename = 'haarcascade_frontalface_default.xml'
+    
+    if not os.path.exists(xml_filename):
+        st.error(f"File {xml_filename} tidak ditemukan di server!")
+        return None
 
+    try:
+        face_cascade = cv2.CascadeClassifier(xml_filename)
+
+        if face_cascade.empty():
+            st.error("Gagal memuat file Haar Cascade XML!")
+            return None
+
+        # Deteksi wajah
         gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
         faces = face_cascade.detectMultiScale(
             gray, 
             scaleFactor=1.1, 
-            minNeighbors=5, 
+            minNeighbors=4, 
             minSize=(30, 30)
         )
 
@@ -477,8 +483,9 @@ def crop_face_keep_ratio(img_rgb):
             x1 = max(0, x - margin)
             x2 = min(img_rgb.shape[1], x + w + margin)
             return img_rgb[y1:y2, x1:x2]
-            
+
     except Exception as e:
+        print(f"Error OpenCV: {e}")
         return None
 
     return None
