@@ -450,29 +450,37 @@ def make_gradcam_heatmap(img_array, model, last_conv_layer_name="resnet50v2", su
     return (heatmap / heatmap_max).numpy()
 
 def crop_face_keep_ratio(img_rgb):
-    cascade_path = 'haarcascade_frontalface_default.xml'
-    if not os.path.exists(cascade_path): 
+    if img_rgb is None:
         return None
-    
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-    img_gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
-    
-    faces = face_cascade.detectMultiScale(img_gray, 1.1, 5, minSize=(100, 100))
-    
-    if len(faces) == 0: 
-        return None
-        
-    x, y, w, h = faces[0]
-    pad_h, pad_w = int(h * 0.2), int(w * 0.15)
-    y1, y2 = max(0, y - pad_h), min(img_rgb.shape[0], y + h + pad_h)
-    x1, x2 = max(0, x - pad_w), min(img_rgb.shape[1], x + w + pad_w)
-    cropped = img_rgb[y1:y2, x1:x2]
-    
-    h_c, w_c, _ = cropped.shape
-    desired_size = max(h_c, w_c)
-    squared_img = np.zeros((desired_size, desired_size, 3), dtype=np.uint8)
-    squared_img[(desired_size-h_c)//2:(desired_size-h_c)//2+h_c, (desired_size-w_c)//2:(desired_size-w_c)//2+w_c] = cropped
-    return cv2.resize(squared_img, (299, 299))
+
+    try:
+        xml_filename = 'haarcascade_frontalface_default.xml'
+        if os.path.exists(xml_filename):
+            face_cascade = cv2.CascadeClassifier(xml_filename)
+        else:
+            cascade_path = getattr(cv2, 'data', None)
+            if cascade_path is not None:
+                face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + xml_filename)
+            else:
+                return img_rgb 
+
+        # Konversi ke grayscale untuk deteksi
+        gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+        if len(faces) > 0:
+            x, y, w, h = faces[0]
+            margin = int(0.2 * max(w, h))
+            y1 = max(0, y - margin)
+            y2 = min(img_rgb.shape[0], y + h + margin)
+            x1 = max(0, x - margin)
+            x2 = min(img_rgb.shape[1], x + w + margin)
+            return img_rgb[y1:y2, x1:x2]
+
+    except Exception as e:
+        return img_rgb
+
+    return img_rgb
 
 def get_hijab_recommendation(shape_label):
     recommendations = {
