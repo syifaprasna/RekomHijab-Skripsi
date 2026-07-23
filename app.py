@@ -455,20 +455,21 @@ def crop_face_keep_ratio(img_rgb):
         return None
 
     try:
+        # Pastikan array bersifat contiguous
         img_rgb_clean = np.ascontiguousarray(img_rgb, dtype=np.uint8)
-
-        img_bgr = cv2.cvtColor(img_rgb_clean, cv2.COLOR_RGB2BGR)
 
         mp_face_detection = mp.solutions.face_detection
 
-        with mp_face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.15) as face_detection:
-            results = face_detection.process(img_bgr)
+        # Deteksi Wajah MediaPipe dengan mode gambar statis
+        with mp_face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.1) as face_detection:
+            results = face_detection.process(img_rgb_clean)
 
-            if not results.detections:
-                with mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.15) as face_far:
-                    results = face_far.process(img_bgr)
+            # Jika model_selection=0 belum ketemu, coba model_selection=1 (jarak jauh)
+            if not results or not results.detections:
+                with mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.1) as face_far:
+                    results = face_far.process(img_rgb_clean)
 
-            if results.detections:
+            if results and results.detections:
                 detection = results.detections[0]
                 bboxC = detection.location_data.relative_bounding_box
                 h, w, _ = img_rgb.shape
@@ -490,8 +491,27 @@ def crop_face_keep_ratio(img_rgb):
 
     except Exception as e:
         print(f"Error MediaPipe: {e}")
-        return None
 
+    # Fallback OpenCV jika MediaPipe berhalangan di server
+    try:
+        xml_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+        face_cascade = cv2.CascadeClassifier(xml_path)
+        gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.05, minNeighbors=2, minSize=(30, 30))
+        
+        if len(faces) > 0:
+            faces = sorted(faces, key=lambda b: b[2] * b[3], reverse=True)
+            x, y, w, h = faces[0]
+            margin = int(0.2 * max(w, h))
+            y1 = max(0, y - margin)
+            y2 = min(img_rgb.shape[0], y + h + margin)
+            x1 = max(0, x - margin)
+            x2 = min(img_rgb.shape[1], x + w + margin)
+            return img_rgb[y1:y2, x1:x2]
+    except Exception as e:
+        print(f"Error OpenCV Fallback: {e}")
+
+    # JIKA BUKAN WAJAH MANUSIA (Bola, Objek Mati, dll): RETURN NONE!
     return None
 
 def get_hijab_recommendation(shape_label):
