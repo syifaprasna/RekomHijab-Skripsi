@@ -577,21 +577,34 @@ else:
                 detected_shape = LABELS[pred_idx]
                 
                 heatmap = make_gradcam_heatmap(processed_img, model)
-                heatmap_expanded = cv2.resize(np.uint8(255 * heatmap), (299, 299))
+                
+                h_img, w_img = face_ready.shape[:2]
+                heatmap_resized = cv2.resize(np.uint8(255 * heatmap), (w_img, h_img))
                 
                 st.markdown("<hr>", unsafe_allow_html=True)
                 st.markdown("<h3 class='centered-sub'>Hasil Deteksi</h3>", unsafe_allow_html=True)
-                
-                # kolom gambar (CROP VS GRAD-CAM)
+             
                 res_img_col1, res_img_col2 = st.columns(2)
+                
                 with res_img_col1:
                     st.image(face_ready, caption="Hasil Crop Wajah", use_container_width=True)
+                    
                 with res_img_col2:
-                    fig, ax = plt.subplots(figsize=(4, 4))
+                    fig, ax = plt.subplots(figsize=(4, 4 * (h_img / w_img)))
+
                     ax.imshow(face_ready)
-                    ax.imshow(heatmap_expanded, cmap='jet', alpha=0.35)
+                    
+                    ax.imshow(
+                        heatmap_resized, 
+                        cmap='jet', 
+                        alpha=0.35, 
+                        extent=[0, w_img, h_img, 0], 
+                        aspect='auto'
+                    )
+                    
                     ax.axis('off')
-                    st.pyplot(fig)
+                    plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+                    st.pyplot(fig, use_container_width=True)
 
                 # Dashboard hasil deteksi
                 st.markdown(f"""
