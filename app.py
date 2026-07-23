@@ -469,30 +469,34 @@ def crop_face_keep_ratio(img_rgb):
     try:
         img_clean = np.ascontiguousarray(img_rgb, dtype=np.uint8)
         h, w, _ = img_clean.shape
+
+        gray_check = cv2.cvtColor(img_clean, cv2.COLOR_RGB2GRAY)
+        mean_brightness = np.mean(gray_check)
+        if mean_brightness < 30:
+            print(f"Gambar terlalu gelap: {mean_brightness}")
+            return None  
+
         img_bgr = cv2.cvtColor(img_clean, cv2.COLOR_RGB2BGR)
 
-        # 1. METODE UTAMA: YuNet DNN Face Detector (Sangat Akurat, Tanpa Salah Crop Pohon)
         yunet_onnx = get_yunet_model()
         if yunet_onnx and os.path.exists(yunet_onnx) and hasattr(cv2, 'FaceDetectorYN'):
             detector = cv2.FaceDetectorYN.create(
                 model=yunet_onnx,
                 config="",
                 input_size=(w, h),
-                score_threshold=0.5,
+                score_threshold=0.65,  
                 nms_threshold=0.3,
                 top_k=5000
             )
             _, faces = detector.detect(img_bgr)
 
             if faces is not None and len(faces) > 0:
-                # Pilih wajah dengan skor confidence/luas terbesar
                 faces = sorted(faces, key=lambda f: f[2] * f[3], reverse=True)
                 box = faces[0][:4].astype(int)
                 x, y, w_box, h_box = box
 
-                # Pengecekan rasio aspek wajah manusia (lebar / tinggi)
                 aspect_ratio = float(w_box) / max(1, h_box)
-                if 0.5 <= aspect_ratio <= 1.5:
+                if 0.55 <= aspect_ratio <= 1.45:
                     margin = int(0.2 * max(w_box, h_box))
                     y1 = max(0, y - margin)
                     y2 = min(h, y + h_box + margin)
@@ -500,22 +504,21 @@ def crop_face_keep_ratio(img_rgb):
                     x2 = min(w, x + w_box + margin)
                     return img_rgb[y1:y2, x1:x2]
 
+            return None
+
     except Exception as e:
         print(f"Error YuNet: {e}")
 
-    # 2. METODE FALLBACK: Haar Cascade dengan Parameter Ketat
     try:
         xml_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
         face_cascade = cv2.CascadeClassifier(xml_path)
         gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
-        gray_eq = cv2.equalizeHist(gray)
 
-        # minNeighbors=6 & minSize=(60, 60) mencegah dedaunan/pohon ter-crop
         faces = face_cascade.detectMultiScale(
-            gray_eq, 
+            gray, 
             scaleFactor=1.1, 
-            minNeighbors=6, 
-            minSize=(60, 60)
+            minNeighbors=8, 
+            minSize=(80, 80)
         )
 
         if len(faces) > 0:
@@ -523,7 +526,7 @@ def crop_face_keep_ratio(img_rgb):
             x, y, w_box, h_box = faces[0]
 
             aspect_ratio = float(w_box) / max(1, h_box)
-            if 0.6 <= aspect_ratio <= 1.4:
+            if 0.65 <= aspect_ratio <= 1.35:
                 margin = int(0.2 * max(w_box, h_box))
                 y1 = max(0, y - margin)
                 y2 = min(img_rgb.shape[0], y + h_box + margin)
@@ -534,7 +537,6 @@ def crop_face_keep_ratio(img_rgb):
     except Exception as e:
         print(f"Error Haar Fallback: {e}")
 
-    # JIKA BUKAN WAJAH MANUSIA (Pohon, Bola, Barang): RETURN NONE!
     return None
 
 def get_hijab_recommendation(shape_label):
