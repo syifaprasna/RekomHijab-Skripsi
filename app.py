@@ -454,7 +454,7 @@ def crop_face_keep_ratio(img_rgb):
     if not os.path.exists(cascade_path): 
         return None
     
-    face_cascade = cv2.CascadeClassifier(cascade_path)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
     img_gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
     
     faces = face_cascade.detectMultiScale(img_gray, 1.1, 5, minSize=(100, 100))
