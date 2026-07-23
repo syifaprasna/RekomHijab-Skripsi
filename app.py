@@ -455,36 +455,29 @@ def crop_face_keep_ratio(img_rgb):
         return None
 
     try:
-        if img_rgb.dtype != np.uint8:
-            if img_rgb.max() <= 1.0:
-                img_rgb = (img_rgb * 255).astype(np.uint8)
-            else:
-                img_rgb = img_rgb.astype(np.uint8)
+        img_rgb_clean = np.ascontiguousarray(img_rgb, dtype=np.uint8)
 
-        if img_rgb.ndim == 3 and img_rgb.shape[2] == 4:
-            img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_RGBA2RGB)
-
-        img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+        img_bgr = cv2.cvtColor(img_rgb_clean, cv2.COLOR_RGB2BGR)
 
         mp_face_detection = mp.solutions.face_detection
 
-        with mp_face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.2) as face_detection:
+        with mp_face_detection.FaceDetection(model_selection=0, min_detection_confidence=0.15) as face_detection:
             results = face_detection.process(img_bgr)
 
             if not results.detections:
-                with mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.2) as face_detection_far:
-                    results = face_detection_far.process(img_bgr)
+                with mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.15) as face_far:
+                    results = face_far.process(img_bgr)
 
             if results.detections:
                 detection = results.detections[0]
                 bboxC = detection.location_data.relative_bounding_box
                 h, w, _ = img_rgb.shape
 
-                # Hitung bounding box
+                # Ambil koordinat box
                 x = max(0, int(bboxC.xmin * w))
                 y = max(0, int(bboxC.ymin * h))
-                w_box = int(bboxC.width * w)
-                h_box = int(bboxC.height * h)
+                w_box = min(w - x, int(bboxC.width * w))
+                h_box = min(h - y, int(bboxC.height * h))
 
                 # Tambahkan margin aman di sekitar wajah
                 margin = int(0.2 * max(w_box, h_box))
